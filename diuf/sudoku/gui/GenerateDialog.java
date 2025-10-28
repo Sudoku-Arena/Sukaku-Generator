@@ -12,6 +12,7 @@ import java.util.List;
 
 import javax.swing.*;
 import javax.swing.border.*;
+import java.io.*;
 
 import diuf.sudoku.*;
 import diuf.sudoku.generator.*;
@@ -3168,6 +3169,12 @@ public class GenerateDialog extends JDialog {
     private JLabel lblDifficulty;
     private JCheckBox chkAnalysis;
 
+    // Multiple generation / export controls
+    private JSpinner spinnerCount;
+    private JCheckBox chkSaveToFile;
+    private JTextField txtOutFile;
+    private JButton btnBrowseOut;
+
     private EnumSet<Symmetry> symmetries = EnumSet.noneOf(Symmetry.class);
     private Difficulty difficulty = Difficulty.Easy;
     private boolean isExact = true;
@@ -3402,6 +3409,46 @@ public class GenerateDialog extends JDialog {
             }
         });
         optionPanel.add(chkAnalysis);
+
+        // Multiple generation / export UI
+        JPanel exportPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        exportPanel.setBorder(new TitledBorder("Output / Batch"));
+        optionPanel.add(exportPanel);
+
+        exportPanel.add(new JLabel("Count:"));
+        spinnerCount = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
+        spinnerCount.setToolTipText("Number of Sudokus to generate");
+        exportPanel.add(spinnerCount);
+
+        chkSaveToFile = new JCheckBox("Save to file");
+        chkSaveToFile.setToolTipText("Save generated Sudokus into a file (one per line)");
+        exportPanel.add(chkSaveToFile);
+
+        txtOutFile = new JTextField(30);
+        txtOutFile.setEnabled(false);
+        exportPanel.add(txtOutFile);
+
+        btnBrowseOut = new JButton("Browse...");
+        btnBrowseOut.setEnabled(false);
+        btnBrowseOut.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                JFileChooser fc = new JFileChooser();
+                int res = fc.showSaveDialog(GenerateDialog.this);
+                if (res == JFileChooser.APPROVE_OPTION) {
+                    txtOutFile.setText(fc.getSelectedFile().getAbsolutePath());
+                }
+            }
+        });
+        exportPanel.add(btnBrowseOut);
+
+        chkSaveToFile.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                boolean sel = chkSaveToFile.isSelected();
+                txtOutFile.setEnabled(sel);
+                btnBrowseOut.setEnabled(sel);
+            }
+        });
+
     }
 
     private void generate() {
@@ -3439,8 +3486,23 @@ public class GenerateDialog extends JDialog {
             minDifficulty = 1.0;
         List<Symmetry> symList = new ArrayList<Symmetry>(symmetries);
 
-        // Generate grid
-        generator = new GeneratorThread(symList, minDifficulty, maxDifficulty, includeDifficulty1, includeDifficulty2, includeDifficulty3, excludeDifficulty1, excludeDifficulty2, excludeDifficulty3, notMaxDifficulty1, notMaxDifficulty2, notMaxDifficulty3, excludeTechnique1, excludeTechnique2, excludeTechnique3, includeTechnique1, includeTechnique2, includeTechnique3, notMaxTechnique1, notMaxTechnique2, notMaxTechnique3, getOneOfThree_1, getOneOfThree_2, getOneOfThree_3);
+        // Generate grid (possibly multiple and export)
+        int count = 1;
+        boolean saveToFile = false;
+        String outPath = null;
+        try {
+            if (spinnerCount != null) count = ((Number)spinnerCount.getValue()).intValue();
+        } catch (Exception ex) { count = 1; }
+        if (chkSaveToFile != null && chkSaveToFile.isSelected()) {
+            saveToFile = true;
+            outPath = txtOutFile.getText().trim();
+            if (outPath.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please choose an output file before saving.", "Generate", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+        }
+        // Pass new parameters count / saveToFile / outPath to GeneratorThread
+        generator = new GeneratorThread(symList, minDifficulty, maxDifficulty, includeDifficulty1, includeDifficulty2, includeDifficulty3, excludeDifficulty1, excludeDifficulty2, excludeDifficulty3, notMaxDifficulty1, notMaxDifficulty2, notMaxDifficulty3, excludeTechnique1, excludeTechnique2, excludeTechnique3, includeTechnique1, includeTechnique2, includeTechnique3, notMaxTechnique1, notMaxTechnique2, notMaxTechnique3, getOneOfThree_1, getOneOfThree_2, getOneOfThree_3, count, saveToFile, outPath);
         generator.start();
     }
 
@@ -3473,10 +3535,12 @@ public class GenerateDialog extends JDialog {
 		private final String getOneOfThree_1;
  		private final String getOneOfThree_2;
 		private final String getOneOfThree_3;
-       private Generator generator;
+      private Generator generator;
+      private final int count;
+      private final boolean saveToFile;
+      private final String outPath;
 
-
-       public GeneratorThread(List<Symmetry> symmetries, double minDifficulty, double maxDifficulty, double includeDifficulty1, double includeDifficulty2, double includeDifficulty3, double excludeDifficulty1, double excludeDifficulty2, double excludeDifficulty3, double notMaxDifficulty1, double notMaxDifficulty2, double notMaxDifficulty3, String excludeTechnique1, String excludeTechnique2, String excludeTechnique3, String includeTechnique1, String includeTechnique2, String includeTechnique3, String notMaxTechnique1, String notMaxTechnique2, String notMaxTechnique3, String getOneOfThree_1, String getOneOfThree_2, String getOneOfThree_3) {
+      public GeneratorThread(List<Symmetry> symmetries, double minDifficulty, double maxDifficulty, double includeDifficulty1, double includeDifficulty2, double includeDifficulty3, double excludeDifficulty1, double excludeDifficulty2, double excludeDifficulty3, double notMaxDifficulty1, double notMaxDifficulty2, double notMaxDifficulty3, String excludeTechnique1, String excludeTechnique2, String excludeTechnique3, String includeTechnique1, String includeTechnique2, String includeTechnique3, String notMaxTechnique1, String notMaxTechnique2, String notMaxTechnique3, String getOneOfThree_1, String getOneOfThree_2, String getOneOfThree_3, int count, boolean saveToFile, String outPath) {
             this.symmetries = symmetries;
             this.minDifficulty = minDifficulty;
             this.maxDifficulty = maxDifficulty;
@@ -3500,7 +3564,10 @@ public class GenerateDialog extends JDialog {
 			this.notMaxTechnique3 = notMaxTechnique3;
 			this.getOneOfThree_1 = getOneOfThree_1;
 			this.getOneOfThree_2 = getOneOfThree_2;
-			this.getOneOfThree_3 = getOneOfThree_3;
+            this.getOneOfThree_3 = getOneOfThree_3;
+            this.count = Math.max(1, count);
+            this.saveToFile = saveToFile;
+            this.outPath = outPath;
         }
 
         @Override
@@ -3518,21 +3585,56 @@ public class GenerateDialog extends JDialog {
                     btnGenerate.setText("Stop");
                 }
             });
-            generator = new Generator();
-            final Grid result = generator.generate(symmetries, minDifficulty, maxDifficulty, includeDifficulty1, includeDifficulty2, includeDifficulty3, excludeDifficulty1, excludeDifficulty2, excludeDifficulty3, notMaxDifficulty1, notMaxDifficulty2, notMaxDifficulty3, excludeTechnique1, excludeTechnique2, excludeTechnique3, includeTechnique1, includeTechnique2, includeTechnique3, notMaxTechnique1, notMaxTechnique2, notMaxTechnique3, getOneOfThree_1, getOneOfThree_2, getOneOfThree_3);
-            SwingUtilities.invokeLater(new Runnable() {
-                public void run() {
+            BufferedWriter writer = null;
+            try {
+                if (saveToFile) {
+                    writer = new BufferedWriter(new FileWriter(outPath, true));
+                }
+                for (int i = 0; i < count; i++) {
+                    if (Thread.currentThread().isInterrupted()) break;
+                    generator = new Generator();
+                    final Grid result = generator.generate(symmetries, minDifficulty, maxDifficulty, includeDifficulty1, includeDifficulty2, includeDifficulty3, excludeDifficulty1, excludeDifficulty2, excludeDifficulty3, notMaxDifficulty1, notMaxDifficulty2, notMaxDifficulty3, excludeTechnique1, excludeTechnique2, excludeTechnique3, includeTechnique1, includeTechnique2, includeTechnique3, notMaxTechnique1, notMaxTechnique2, notMaxTechnique3, getOneOfThree_1, getOneOfThree_2, getOneOfThree_3);
                     if (result != null) {
-                        sudokuList.add(result);
-                        sudokuIndex = sudokuList.size() - 1;
-                        refreshSudokuPanel();
-                    }
-                    if (GenerateDialog.this.isVisible()) {
-                        AutoBusy.setBusy(GenerateDialog.this, false);
-                        btnGenerate.setText("Generate");
+                        // Add to list and update UI
+                        synchronized (sudokuList) {
+                            sudokuList.add(result);
+                            sudokuIndex = sudokuList.size() - 1;
+                        }
+                        SwingUtilities.invokeLater(new Runnable() {
+                            public void run() {
+                                refreshSudokuPanel();
+                            }
+                        });
+                        // Write to file as single-line 81 chars (rows left-to-right, top-to-bottom), '.' for empty
+                        if (writer != null) {
+                            StringBuilder sb = new StringBuilder(81);
+                            for (int y = 0; y < 9; y++) {
+                                for (int x = 0; x < 9; x++) {
+                                    int v = result.getCellValue(x, y);
+                                    if (v <= 0) sb.append('.'); else sb.append((char)('0' + v));
+                                }
+                            }
+                            writer.write(sb.toString());
+                            writer.newLine();
+                            writer.flush();
+                        }
                     }
                 }
-            });
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            } finally {
+                if (writer != null) {
+                    try { writer.close(); } catch (IOException e) { /* ignore */ }
+                }
+                SwingUtilities.invokeLater(new Runnable() {
+                    public void run() {
+                        if (GenerateDialog.this.isVisible()) {
+                            AutoBusy.setBusy(GenerateDialog.this, false);
+                            btnGenerate.setText("Generate");
+                        }
+                    }
+                });
+            }
             GenerateDialog.this.generator = null;
         }
 
