@@ -3174,6 +3174,9 @@ public class GenerateDialog extends JDialog {
     private JCheckBox chkSaveToFile;
     private JTextField txtOutFile;
     private JButton btnBrowseOut;
+    private JComboBox<String> comboFormat;
+    private String selectedFormat = "Classique";
+    private JProgressBar progressBar;
 
     private EnumSet<Symmetry> symmetries = EnumSet.noneOf(Symmetry.class);
     private Difficulty difficulty = Difficulty.Easy;
@@ -3410,44 +3413,78 @@ public class GenerateDialog extends JDialog {
         });
         optionPanel.add(chkAnalysis);
 
-        // Multiple generation / export UI
-        JPanel exportPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        exportPanel.setBorder(new TitledBorder("Output / Batch"));
-        optionPanel.add(exportPanel);
+    // Multiple generation / export UI
 
-        exportPanel.add(new JLabel("Count:"));
-        spinnerCount = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
-        spinnerCount.setToolTipText("Number of Sudokus to generate");
-        exportPanel.add(spinnerCount);
+    JPanel exportPanel = new JPanel();
+    exportPanel.setLayout(new BoxLayout(exportPanel, BoxLayout.Y_AXIS));
+    exportPanel.setBorder(new TitledBorder("Output / Batch"));
+    optionPanel.add(exportPanel);
 
-        chkSaveToFile = new JCheckBox("Save to file");
-        chkSaveToFile.setToolTipText("Save generated Sudokus into a file (one per line)");
-        exportPanel.add(chkSaveToFile);
+    // First row: Count and Save to file
+    JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    row1.add(new JLabel("Count:"));
+    spinnerCount = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
+    spinnerCount.setToolTipText("Number of Sudokus to generate");
+    row1.add(spinnerCount);
+    chkSaveToFile = new JCheckBox("Save to file");
+    chkSaveToFile.setToolTipText("Save generated Sudokus into a file (one per line)");
+    row1.add(chkSaveToFile);
+    exportPanel.add(row1);
 
-        txtOutFile = new JTextField(30);
-        txtOutFile.setEnabled(false);
-        exportPanel.add(txtOutFile);
-
-        btnBrowseOut = new JButton("Browse...");
-        btnBrowseOut.setEnabled(false);
-        btnBrowseOut.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                JFileChooser fc = new JFileChooser();
-                int res = fc.showSaveDialog(GenerateDialog.this);
-                if (res == JFileChooser.APPROVE_OPTION) {
-                    txtOutFile.setText(fc.getSelectedFile().getAbsolutePath());
-                }
+    // Second row: Output file and browse
+    JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    txtOutFile = new JTextField(15); // Reduced from 30 to 15 columns
+    txtOutFile.setEnabled(false);
+    row2.add(txtOutFile);
+    btnBrowseOut = new JButton("Browse...");
+    btnBrowseOut.setEnabled(false);
+    btnBrowseOut.addActionListener(new ActionListener() {
+        public void actionPerformed(ActionEvent e) {
+            JFileChooser fc = new JFileChooser();
+            int res = fc.showSaveDialog(GenerateDialog.this);
+            if (res == JFileChooser.APPROVE_OPTION) {
+                txtOutFile.setText(fc.getSelectedFile().getAbsolutePath());
             }
-        });
-        exportPanel.add(btnBrowseOut);
+        }
+    });
+    row2.add(btnBrowseOut);
+    exportPanel.add(row2);
+
+    // Third row: Format selection
+    JPanel row3 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    row3.add(new JLabel("Format:"));
+    comboFormat = new JComboBox<>(new String[] {"Classique", "SER"});
+    comboFormat.setSelectedItem(selectedFormat);
+    comboFormat.setToolTipText("Choisissez le format de sortie : Classique ou SER");
+    comboFormat.addActionListener(new ActionListener() {
+        public void actionPerformed(ActionEvent e) {
+            selectedFormat = (String) comboFormat.getSelectedItem();
+        }
+    });
+    row3.add(comboFormat);
+    exportPanel.add(row3);
+
+    // Progress bar (remains below exportPanel)
+    progressBar = new JProgressBar();
+    progressBar.setStringPainted(true);
+    progressBar.setVisible(false);
+    progressBar.setMaximumSize(new Dimension(350, 20));
+    progressBar.setPreferredSize(new Dimension(350, 20));
+    progressBar.setMinimumSize(new Dimension(100, 20));
+    JPanel progressPanel = new JPanel();
+    progressPanel.setLayout(new BoxLayout(progressPanel, BoxLayout.X_AXIS));
+    progressPanel.add(progressBar);
+    optionPanel.add(progressPanel);
 
         chkSaveToFile.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 boolean sel = chkSaveToFile.isSelected();
                 txtOutFile.setEnabled(sel);
                 btnBrowseOut.setEnabled(sel);
+                comboFormat.setEnabled(sel);
             }
         });
+        comboFormat.setEnabled(false);
 
     }
 
@@ -3590,6 +3627,14 @@ public class GenerateDialog extends JDialog {
                 if (saveToFile) {
                     writer = new BufferedWriter(new FileWriter(outPath, true));
                 }
+                // Affiche et initialise la barre de progression
+                SwingUtilities.invokeLater(() -> {
+                    progressBar.setMinimum(0);
+                    progressBar.setMaximum(count);
+                    progressBar.setValue(0);
+                    progressBar.setString("0 / " + count);
+                    progressBar.setVisible(true);
+                });
                 for (int i = 0; i < count; i++) {
                     if (Thread.currentThread().isInterrupted()) break;
                     generator = new Generator();
@@ -3600,23 +3645,43 @@ public class GenerateDialog extends JDialog {
                             sudokuList.add(result);
                             sudokuIndex = sudokuList.size() - 1;
                         }
-                        SwingUtilities.invokeLater(new Runnable() {
-                            public void run() {
-                                refreshSudokuPanel();
-                            }
+                        SwingUtilities.invokeLater(() -> {
+                            refreshSudokuPanel();
+                            progressBar.setValue(progressBar.getValue() + 1);
+                            progressBar.setString(progressBar.getValue() + " / " + count);
                         });
-                        // Write to file as single-line 81 chars (rows left-to-right, top-to-bottom), '.' for empty
+                        // Write to file in selected format
                         if (writer != null) {
-                            StringBuilder sb = new StringBuilder(81);
-                            for (int y = 0; y < 9; y++) {
-                                for (int x = 0; x < 9; x++) {
-                                    int v = result.getCellValue(x, y);
-                                    if (v <= 0) sb.append('.'); else sb.append((char)('0' + v));
+                            if (selectedFormat.equals("SER")) {
+                                // Format SER: grille + rating (ex: "%g ED=%r/%p/%d")
+                                String grille = result.toString81();
+                                double rating = 0.0, pearl = 0.0, diamond = 0.0;
+                                try {
+                                    Solver solver = new Solver(result);
+                                    // Formatter bidon, pas d'écriture fichier
+                                    diuf.sudoku.test.serate.Formatter dummyFormatter = new diuf.sudoku.test.serate.Formatter(new java.io.PrintWriter(new java.io.StringWriter()), "", "", "", "");
+                                    solver.getDifficulty(dummyFormatter);
+                                    rating = solver.difficulty;
+                                    pearl = solver.pearl;
+                                    diamond = solver.diamond;
+                                } catch (Exception ex) {}
+                                String ratingStr = String.format("%.1f", rating);
+                                writer.write(grille + " " + ratingStr);
+                                writer.newLine();
+                                writer.flush();
+                            } else {
+                                // Classique : 81 caractères
+                                StringBuilder sb = new StringBuilder(81);
+                                for (int y = 0; y < 9; y++) {
+                                    for (int x = 0; x < 9; x++) {
+                                        int v = result.getCellValue(x, y);
+                                        if (v <= 0) sb.append('.'); else sb.append((char)('0' + v));
+                                    }
                                 }
+                                writer.write(sb.toString());
+                                writer.newLine();
+                                writer.flush();
                             }
-                            writer.write(sb.toString());
-                            writer.newLine();
-                            writer.flush();
                         }
                     }
                 }
@@ -3626,12 +3691,11 @@ public class GenerateDialog extends JDialog {
                 if (writer != null) {
                     try { writer.close(); } catch (IOException e) { /* ignore */ }
                 }
-                SwingUtilities.invokeLater(new Runnable() {
-                    public void run() {
-                        if (GenerateDialog.this.isVisible()) {
-                            AutoBusy.setBusy(GenerateDialog.this, false);
-                            btnGenerate.setText("Generate");
-                        }
+                SwingUtilities.invokeLater(() -> {
+                    progressBar.setVisible(false);
+                    if (GenerateDialog.this.isVisible()) {
+                        AutoBusy.setBusy(GenerateDialog.this, false);
+                        btnGenerate.setText("Generate");
                     }
                 });
             }
